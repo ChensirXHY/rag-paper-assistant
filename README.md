@@ -21,6 +21,6 @@ dlenv_project/
 ├── chroma_db/          # [自动生成] 向量数据库索引文件，无需手动修改
 ├── local_models/       # [需手动准备] 存放本地运行的 Embedding 模型权重文件
 ├── .env                # 环境变量配置（API Key 等敏感信息）
-├── RAG_base.py         # 核心业务逻辑：文档加载、切片、向量化及问答链构建
+├── RAG_base.py         # [运行该文件] 核心业务逻辑：文档加载、切片、向量化及问答链构建
 ├── test_llm.py         # 测试脚本（测试api初始化，测试脚本）
 └── .gitignore          # Git 忽略配置
