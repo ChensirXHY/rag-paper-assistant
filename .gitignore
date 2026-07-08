@@ -1,0 +1,14 @@
+#环境变量文件
+.env
+
+#JetBrains IDE 配置目录
+.idea/
+
+#本地模型文件目录
+local_models/
+
+#本地论文文献目录
+papers/
+
+#向量数据库自动生成，无需跟踪
+chroma_db/
