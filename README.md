@@ -289,15 +289,20 @@ pre-commit install               # 装 Git 钩子，提交前自动检查
 
 | 项目 | 结果 |
 |---|---|
-| 单元测试 | **132 通过**，3 跳过（`integration` 标记） |
+| 单元测试 | **132 通过**，3 跳过（`integration` 标记，不需要 API Key） |
 | 集成测试 | **135 通过**（真实 PDF + 真实 Chroma 增量同步） |
 | 覆盖率 | **82%**（loader 96% / vectorstore 89% / splitter 100% / logger 100% / qa 53%） |
 | ruff check | 全部通过 |
 | ruff format | 全部合规 |
+| CI（GitHub Actions） | ✅ 三个 job 全绿（ruff / pytest / 依赖可安装性） |
 
 测试设计原则：**不依赖 API Key、不依赖嵌入模型、不依赖真实 PDF**，
 因此 CI 里能秒级跑完。重点守护两条容易出错的不变量：
 增量索引的四个分支（新增/未变/变更/删除）与中文分片的句子完整性。
+
+集成测试会自动探测项目根目录下的 `papers/`，因此在本地仓库直接
+`pytest --run-integration` 即可运行，无需额外准备数据目录；
+没有真实文献的环境会给出明确的跳过原因而非报错。
 
 ---
 

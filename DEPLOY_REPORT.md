@@ -208,6 +208,75 @@ Error code: 401 - Authentication Fails, Your api key: ****d9e7 is invalid
 **结论不变**：中文分隔符表确实有价值，但价值在"句子不被拦腰截断"
 （100% vs 0%），而不是"块尾对齐句末"。文档与测试均已按实测改写。
 
+---
+
+## 六、推送 GitHub 后发现的第四个缺陷（Linux 平台依赖）
+
+### 现象
+
+推送后 CI 的 pytest job 在 GitHub Actions 上**稳定失败**
+（两次重跑均失败），而本地 Windows 环境 135 项测试全部通过。
+
+排查过程（本地逐一排除）：
+
+| 排查项 | 结论 |
+|---|---|
+| 依赖差异 | 用干净 venv 复现 CI 的最小依赖集（无 torch/chromadb）→ 通过 |
+| 模块导入 | 六个模块在无 chromadb 环境下均可 import → 通过 |
+| 路径差异 | 复制 git 跟踪清单到纯 ASCII 路径 → 通过 |
+| 覆盖率门槛 | CI 条件下实测 82.21%，远高于 50% → 通过 |
+| 行尾格式 | git 索引中全部为 LF → 排除 CRLF |
+| 编码 | 所有文件读写均显式 `encoding="utf-8"` → 排除 |
+| 偶发性 | 重跑两次仍失败 → 排除（是确定性问题） |
+
+**无法本地复现**（无 WSL / Docker），最终通过给 CI 增加 artifact 上传步骤、
+再用 API 下载 pytest 输出定位到根因。
+
+### 根因
+
+```
+platform linux -- Python 3.10.21
+E  AssertionError: assert 'E:\\very\\long\\path' not in '...'
+   '[片段1] 出自《E:\very\long\path\论文三.pdf》第0页'
+```
+
+`src/qa.py` 用 `Path(source).name` 取文件名，而 `Path` **按当前平台的分隔符解析**。
+反斜杠在 POSIX 上不是分隔符，因此当文献的 `source` 元数据记录的是 Windows 风格
+路径时（索引在 Windows 上建立、程序在容器/Linux 上运行），`Path(...).name`
+会返回整个字符串。
+
+**这同时是一个真实缺陷**：在 Linux 上部署时，出处标注会显示一长串完整路径，
+而不是文件名。
+
+### 修复
+
+新增 `base_name()`，在 `PureWindowsPath` 与 `PurePosixPath` 之间按路径形态
+选择，不依赖当前操作系统。`format_context()` 与 `collect_sources()` 均改用它。
+
+验证：8 种路径形态全部正确（Windows 反斜杠与盘符、Windows 正斜杠、
+POSIX 绝对与相对路径、纯文件名、无法解析的字符串）。
+
+### 顺带修复
+
+`staging_project` fixture 原先硬编码指向 `E:\project\_staging_test`
+（一次验证时的临时副本），该副本删除后两个集成用例会静默跳过
+（表现为 135 通过变成 133 通过 + 2 跳过）。
+改为按 `RAG_TEST_PROJECT` 环境变量 → 当前项目根目录 → 历史副本的顺序探测，
+因此在开发者自己的仓库里直接 `pytest --run-integration` 即可运行。
+
+### 最终状态
+
+```
+CI 运行 #4  提交 fd9ecfa  结论 SUCCESS
+  [通过] 单元测试（pytest）
+  [通过] 静态检查（ruff）
+  [通过] 依赖可安装性检查（pip dry-run）
+```
+
+CI 中还新增了 `scripts/ci_diagnose.py` 步骤：一次性打印 Python 版本、
+文件系统编码、临时目录可写性、各模块导入结果与 pytest 收集结果，
+避免以后再出现"本地能过、CI 过不了"却无从下手的情况。
+
 ### 另外发现的一个不一致
 
 `.env` 里配置的模型是 `deepseek-v4-flash`，而简历上写的是 **DeepSeek V4 Pro**。
