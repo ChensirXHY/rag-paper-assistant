@@ -136,6 +136,15 @@ jobs:
       - name: 打印已安装依赖（便于复现与排查）
         run: pip list
 
+      - name: 环境诊断（失败时最有用的信息）
+        # 先跑诊断：把 Python 版本、文件系统编码、临时目录可写性、
+        # 各模块能否导入、pytest 能否收集用例一次性打印出来。
+        # 这样一旦后续步骤失败，日志里已经有足够信息定位，
+        # 不必再靠"本地能过、CI 过不了"猜测。
+        # continue-on-error：诊断本身失败不应掩盖真正的测试结果
+        continue-on-error: true
+        run: python scripts/ci_diagnose.py
+
       - name: 运行单元测试
         # 不加 --run-integration：集成用例需要真实 PDF 与嵌入模型，
         # 在 CI 里既慢又不稳定（这类测试适合本地或夜间任务跑）
