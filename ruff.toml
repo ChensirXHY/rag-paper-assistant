@@ -1,0 +1,145 @@
+# ============================================================================
+# Ruff 配置 —— 一个工具同时替代 flake8 + isort + pydocstyle + pyupgrade
+#
+# 为什么选 ruff：本项目是单人维护的项目，工具链越短越容易被坚持执行。
+# ruff 覆盖格式检查、import 排序、docstring 规范与语法现代化，
+# 且用 Rust 实现，pre-commit 与 CI 里都在秒级完成。
+#
+# 用法：
+#   ruff check .            # 静态检查
+#   ruff check --fix .      # 自动修复可修复项
+#   ruff format --check .   # 只检查格式（CI 用）
+# ============================================================================
+
+# 100 列而不是 88：本项目注释与 docstring 是中文，
+# 中文字符在终端/编辑器里占两格宽度，88 列会把一个完整的技术判断
+# 频繁拆到两行，反而更难读。
+line-length = 100
+
+# 目标 Python 3.10（与 conda 环境 dl_env 一致）：决定 UP 规则可用的新语法，
+# 也决定能否用 `X | Y` 这种 3.10 才支持的联合类型标注。
+target-version = "py310"
+
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".ruff_cache",
+    ".pytest_cache",
+    # 历史存档：保留改造前的实现以便对照，但不参与代码规范检查
+    "archive",
+    "_backup_before_refactor_*",
+    # 数据与模型目录，不是源码，扫它们纯属浪费时间：
+    # papers/ 是 6 篇论文 PDF，local_models/ 是 1.3 GB 嵌入模型权重，
+    # chroma_db/ 是向量库持久化文件
+    "chroma_db",
+    "chroma_clean",
+    "local_models",
+    "papers",
+    "logs",
+    "eval/reports",
+]
+
+[lint]
+# 规则族选择说明：
+#   E/W  pycodestyle：缩进、空格、行长等风格问题
+#   F    pyflakes：未使用变量/导入、未定义名字 —— 最能抓到真实 bug 的一族
+#   I    isort：import 分组与排序，减少合并冲突时反复挪行
+#   N    pep8-naming：命名一致性
+#   D    pydocstyle：docstring 规范（本项目 docstring 是主要文档载体，必须管）
+#   UP   pyupgrade：把过时写法升级到目标 Python 版本
+#   B    flake8-bugbear：常见陷阱（可变默认参数、盲 except 等）
+#   SIM  flake8-simplify：冗余写法
+#   RET  flake8-return：多余的 return/elif，让控制流更直白
+select = ["E", "W", "F", "I", "N", "D", "UP", "B", "SIM", "RET"]
+
+# 逐条 ignore 都必须写清理由 —— 不留"无理由的忽略"，
+# 那等于把规则关掉却假装还开着。
+ignore = [
+    # --- D 族内部互斥的规则：pydocstyle 官方把它们成对设计，只能二选一 ---
+    # D203「class docstring 前需要空行」与 D211「不要空行」互斥；
+    # 取 D211，与 Google 风格一致：class 下一行直接写 docstring
+    "D203",
+    # D212「摘要写在首行」与 D213「摘要写在第二行」互斥；
+    # 取 D213（Google 风格），忽略 D212
+    "D212",
+    # D413 要求 docstring 最后一个 section 之后留一个空行，
+    # 而 ruff format 会把行尾空行删掉 —— 两者不可能同时满足。
+    # 保留 formatter（它管的是真实代码布局），忽略 D413
+    "D413",
+    # D407 是 reStructuredText 风格的 section 下划线要求；
+    # 本项目统一用 Google 风格（见 [lint.pydocstyle]），该规则不适用
+    "D407",
+    # --- 中文项目的固有取舍 ---
+    # D400/D415 要求 docstring 首行以半角 . ? ! 结尾，而中文 docstring
+    # 自然以全角"。"结尾，pydocstyle 不认全角句号。
+    # 强行改成半角句点在中文里是明显的排版错误，故忽略
+    "D400",
+    "D415",
+    # D401 要求"祈使语气"（Return xxx 而非 Returns xxx）。
+    # 祈使语气在中文里不成立，且 Google 风格官方示例本身就用
+    # "Args:"/"Returns:" 这种第三人称形式，故忽略
+    "D401",
+    # --- 与格式化器/既有实现冲突 ---
+    # E501（行太长）由 line-length 统一控制；ruff format 已保证换行。
+    # 再让 linter 重复报同一件事，只会在"注释里有个长 URL"这种
+    # 无法换行的地方制造噪声
+    "E501",
+    # --- 刻意保留的写法 ---
+    # B008 禁止在参数默认值里调用函数。本项目用 dataclass 的 field()、
+    # 以及 argv=None 这类默认值写法，属误报
+    "B008",
+    # RET504 要求"赋值后立刻 return"时省掉中间变量。
+    # 本项目刻意保留中间变量（如 chunks = split(...)）：便于打断点观察，
+    # 也让"这一步在做什么"在代码里显式可见
+    "RET504",
+    # SIM108 要求 if/else 赋值改写成三元表达式。
+    # 在中文注释密集的代码里，三元表达式会挤成很长一行，可读性反而下降
+    "SIM108",
+    # N806 要求函数内变量名小写。测试里构造局部替身类（FakeStore 等）
+    # 以贴合被测代码的命名风格，误报多于收益
+    "N806",
+]
+
+[lint.pydocstyle]
+# Google 风格：Args / Returns / Raises / Example 四段式，
+# 与项目现有 docstring 完全一致，不需要为"符合规范"改写任何注释
+convention = "google"
+
+[lint.per-file-ignores]
+# 测试文件豁免项：
+#   D100 模块不强制 docstring（测试包已有）
+#   D103/D102 测试函数不必逐条写 docstring：
+#         本项目测试用"类级 docstring + 断言失败信息 + 行内注释"表达意图，
+#         断言消息才是排查时真正看的东西，逐函数 docstring 只是重复函数名。
+#   D107 测试替身（如 FakeStore）的 __init__ 不必写 docstring
+#   E402 conftest 必须先改 sys.path、设环境变量，再 import 业务模块，
+#         这是 pytest 的固有写法，不是"import 位置不当"
+#   B011 测试里 assert False 是合法写法
+#   N802 pytest 收集的钩子名（pytest_addoption 等）就是驼峰式，不能改
+#   D301 中文 docstring 里出现 \\n、\\t 这类转义说明时，加 r""" 反而让
+#         同一文件里两种 docstring 风格混杂，可读性更差
+"tests/*" = ["D100", "D102", "D103", "D107", "E402", "B011", "N802", "D301"]
+"tests/**" = ["D100", "D102", "D103", "D107", "E402", "B011", "N802", "D301"]
+
+# 评测脚本豁免项：
+#   E402 run_eval.py 必须先往 sys.path 补项目根目录，再 import config，
+#         否则 `python eval/run_eval.py` 直接执行时会 ImportError
+#   D103 指标函数简短，且模块 docstring 已给出完整定义
+"eval/*" = ["E402", "D103"]
+"eval/**" = ["E402", "D103"]
+
+# CLI 入口：app.py 是薄封装，函数简短，不强制逐函数 docstring
+"app.py" = ["D103"]
+
+[lint.isort]
+# import 分组：把项目自身的模块标成 first-party，避免被当成第三方包排到后面
+known-first-party = ["config", "src", "eval", "tests"]
+
+[format]
+# 统一双引号：中文项目里字符串内容常含单引号，双引号冲突更少
+quote-style = "double"
+indent-style = "space"
+# 行尾统一 LF：避免 Windows 开发 + Linux CI 之间出现"整个文件都变了"的假 diff
+line-ending = "lf"

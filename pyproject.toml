@@ -1,0 +1,54 @@
+# ============================================================
+# 项目元信息与工具配置
+#
+# 说明：
+#   - ruff 的配置放在独立的 ruff.toml（注释较多，便于阅读）
+#   - 这里只放 pytest 与项目元信息，避免配置文件分散在多处
+# ============================================================
+
+[project]
+name = "rag-paper-assistant"
+version = "0.2.0"
+description = "基于 RAG 的学术文献智能问答系统（LangChain + Chroma + DeepSeek）"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["rag", "langchain", "chromadb", "llm", "deepseek", "question-answering"]
+classifiers = [
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[tool.pytest.ini_options]
+# 显式指定测试目录，避免 pytest 递归扫描到 papers/、local_models/ 等数据目录
+testpaths = ["tests"]
+# 让 `pytest` 默认输出更简洁；-v 可覆盖
+addopts = "-q --strict-markers"
+# 注册自定义标记，避免 pytest 报 PytestUnknownMarkWarning
+markers = [
+    "integration: 需要真实资源（真实 PDF / 真实嵌入模型 / 真实 Chroma），默认跳过",
+]
+# 过滤第三方库的弃用警告，让真正的警告不被淹没。
+# 注意不忽略本项目自身的警告 —— 那些是需要修的。
+filterwarnings = [
+    "ignore::DeprecationWarning:langchain_community.*",
+    "ignore::DeprecationWarning:chromadb.*",
+    "ignore::DeprecationWarning:pydantic.*",
+    "ignore::UserWarning:langchain.*",
+]
+
+[tool.coverage.run]
+source = ["src", "config.py", "app.py"]
+omit = ["tests/*", "eval/*"]
+
+[tool.coverage.report]
+# CI 里用 50% 作为门槛：集成测试默认跳过时覆盖率会低一些，
+# 本地跑 --run-integration 时实际可达 82%。
+fail_under = 50
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]

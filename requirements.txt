@@ -1,0 +1,43 @@
+# ============================================================
+# 运行依赖
+#
+# 版本依据当前实际开发环境（conda env: dl_env, Python 3.10）锁定，
+# 可直接 `pip install -r requirements.txt` 复现。
+#
+# ⚠️ torch 请按自己的 CUDA 版本单独安装，见 https://pytorch.org/get-started/locally/
+#    本项目开发环境为 CUDA 11.8：
+#    pip install torch==2.7.1 --index-url https://download.pytorch.org/whl/cu118
+# ============================================================
+
+# --- LangChain 生态 ---
+# 注意：LangChain 迭代极快，务必锁版本，否则不同时间安装会得到不同行为
+langchain==1.3.11
+langchain-core==1.4.8
+langchain-community==0.4.2
+langchain-openai==1.3.3
+langchain-text-splitters==1.1.2
+langchain-classic==1.0.8        # 保留以兼容旧版 Chain 接口（本项目已改用 LCEL）
+
+# --- 向量数据库 ---
+chromadb==1.5.9
+
+# --- 嵌入模型 ---
+# 本地运行 BAAI/bge-large-zh-v1.5 需要下面三项
+sentence-transformers==5.6.0
+transformers==5.12.1
+huggingface_hub==1.20.1
+torch==2.7.1                    # 按需替换为对应 CUDA/CPU 版本
+
+# --- 文档解析 ---
+pypdf==6.14.2                   # PDF 解析（PyPDFLoader 底层依赖）
+python-docx==1.1.2              # Word 解析，支撑"多格式文献"能力（必需，否则 .docx 无法加载）
+
+# --- 配置与工具 ---
+python-dotenv==1.2.2
+numpy==1.26.4                   # 与 torch 2.7.1 兼容的版本，勿升到 2.x
+rich==15.0.0                    # CLI 美化输出
+
+# --- 服务层（P3 阶段启用在线 Demo 时安装）---
+# fastapi==0.115.5
+# uvicorn[standard]==0.32.1
+# sse-starlette==2.1.3
