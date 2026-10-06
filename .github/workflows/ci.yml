@@ -1,0 +1,171 @@
+# ============================================================================
+# 持续集成：静态检查 + 单元测试 + 安装可行性检查
+#
+# 核心设计取舍（这是整份配置最重要的部分）：
+#
+#   1. CI 里**不装** torch / chromadb / sentence-transformers。
+#      三者合计超过 3 GB，在 GitHub Actions 上光下载就要十几分钟，
+#      而且跟"业务逻辑对不对"没有关系。代价是相关用例在 CI 中显示为
+#      skipped —— 这是显式记录的取舍，不是偷偷跳过：
+#
+#        | 依赖                | 不装它会导致什么                        |
+#        | ------------------- | --------------------------------------- |
+#        | chromadb            | test_vectorstore.py 的集成用例跳过      |
+#        | sentence-transformers | 真实嵌入模型相关用例跳过（is_integration）|
+#        | torch               | 同上一行（嵌入模型与设备探测都依赖它）  |
+#
+#      这些用例在本地用 `pytest tests/ --run-integration` 跑（已在
+#      dl_env + 真实论文 + 真实向量库上验证通过：135 passed）。
+#
+#   2. langchain-community / langchain-openai / pypdf 是**装**的。
+#      它们是纯 Python 轻量包（KB 级），而且：
+#        * src/loader.py、src/vectorstore.py 在模块顶层 import
+#          langchain_community，不装就整个文件跳过，等于白跑 CI；
+#        * pypdf 是 PyPDFLoader 的解析后端（实测缺它时 PyPDFLoader
+#          会在构造阶段的导入检查里失败，docx/pdf 两类用例全部跳过）；
+#        * langchain-openai 不装则 test_qa.py 整体跳过。
+#      装了它们，CI 才能真正覆盖 loader / splitter / qa / logger。
+#
+#   3. 用假 API Key（sk-test-...）跑测试。
+#      单元测试的底线是"零外部依赖"：不联网、不花钱、不依赖别人的 Key。
+#      需要真实大模型的评测由 eval/run_eval.py 负责，不进 CI。
+#
+#   4. lint 与 test 拆成两个 job：并行执行，且能一眼看出
+#      "是代码风格问题还是逻辑问题"。
+# ============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# 同一分支连续推送时取消上一次未完成的运行：
+# 省下排队时间，也避免旧提交的结论覆盖新提交的结论
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# 只读权限：CI 不需要写仓库，最小权限原则
+permissions:
+  contents: read
+
+env:
+  # 全流程统一的 Python 版本（与开发环境 dl_env 的 3.10 对齐）
+  PYTHON_VERSION: "3.10"
+  # 让导入路径稳定（本项目是脚本式布局，非可安装包）；
+  # tests/conftest.py 里也会补一次 sys.path，两重保险
+  PYTHONPATH: ${{ github.workspace }}
+  # CI 用的假 Key：只为让 Settings.validate() 的"配置自检"分支能通过，
+  # 任何真实调用都会失败 —— 这是刻意的，测试不该联网
+  DEEPSEEK_API_KEY: "sk-test-ci-not-a-real-key"
+  # 关闭 Python 输出缓冲，日志实时可见（排查 CI 失败时很关键）
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  # --------------------------------------------------------------------------
+  # job 1：静态检查
+  #   只装 ruff（单文件二进制级依赖，秒级安装）。
+  #   不装项目依赖：lint 是纯静态分析，不需要运行时环境，
+  #   装了反而多出"依赖装不上导致 lint 失败"的假故障。
+  # --------------------------------------------------------------------------
+  lint:
+    name: 静态检查（ruff）
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 安装 ruff
+        # 版本与 .pre-commit-config.yaml 的 rev 严格一致：
+        # 两处不一致会导致"本地钩子通过、CI 报红"这类最难查的问题
+        run: pip install ruff==0.7.4
+
+      - name: 运行 ruff 静态检查
+        run: ruff check . --output-format=github
+
+      - name: 检查代码格式
+        # --check 只比较不修改：CI 的职责是判定，不是替人改代码
+        run: ruff format --check .
+
+  # --------------------------------------------------------------------------
+  # job 2：单元测试
+  #   刻意保持"轻依赖"：总下载量在几十 MB 量级，1 分钟内跑完。
+  #   覆盖率门槛说明：CI 里跑不到 vectorstore 与真实嵌入模型相关分支，
+  #   门槛定在 50% —— 本地全量（含集成用例）实测 82%，
+  #   两者差异完全来自被跳过的重依赖分支，不是测试质量问题。
+  # --------------------------------------------------------------------------
+  test:
+    name: 单元测试（pytest）
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          # pip 缓存：把"重复下载同一个 wheel"的时间省掉
+          cache: pip
+
+      - name: 安装最小测试依赖
+        # 说明见文件头"核心设计取舍"第 1、2 条。
+        # 显式钉住大版本，避免上游 breaking change 让 CI 突然变红。
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            "pytest>=8,<9" \
+            "pytest-cov>=6,<8" \
+            "pytest-mock>=3.14,<4" \
+            "langchain-core>=1,<2" \
+            "langchain-text-splitters>=1,<2" \
+            "langchain-community>=0.4,<0.5" \
+            "langchain-openai>=1,<2" \
+            "pypdf>=6,<7" \
+            "pydantic>=2,<3" \
+            "python-dotenv>=1,<2"
+
+      - name: 打印已安装依赖（便于复现与排查）
+        run: pip list
+
+      - name: 运行单元测试
+        # 不加 --run-integration：集成用例需要真实 PDF 与嵌入模型，
+        # 在 CI 里既慢又不稳定（这类测试适合本地或夜间任务跑）
+        run: pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=50
+
+  # --------------------------------------------------------------------------
+  # job 3：依赖可安装性检查（只在 main 上跑）
+  #   目的：requirements.txt 是部署入口，一旦写错（版本冲突、包不存在），
+  #   用户会在自己机器上才发现。这里用 --dry-run 只做解析，
+  #   不真正下载安装（torch 装一遍要几分钟且 CI 用不到）。
+  #   只在 main 上跑，是为了不让 PR 阶段被这个较慢的检查阻塞。
+  # --------------------------------------------------------------------------
+  install-check:
+    name: 依赖可安装性检查（pip dry-run）
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 解析 requirements.txt（不实际安装）
+        # --dry-run 会完整走一遍依赖解析，能发现版本冲突与不存在的包，
+        # 但不下载 wheel，因此几十秒内完成
+        run: pip install --dry-run --quiet -r requirements.txt
+
+      - name: 解析 requirements-dev.txt（不实际安装）
+        # 开发依赖同样要能解析，否则新同事第一步就卡住
+        run: pip install --dry-run --quiet -r requirements-dev.txt

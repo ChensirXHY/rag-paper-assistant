@@ -1,0 +1,54 @@
+// ============================================================================
+// 光伏功率预测文献问答 —— 评测问题集（15 条）
+// ============================================================================
+// 每行一个 JSON 对象（JSONL），空行与以 `//` 开头的行会被 run_eval.py 忽略，
+// 因此可以像下面这样写注释、分组，而不影响解析。
+//
+// 字段说明：
+//   id                必填。问题唯一标识，用于在报告与 JSON 明细里定位问题。
+//   question          必填。给系统提的中文问题（会和真实用户提问一样走完整链路）。
+//   type              必填。三选一：
+//                       fact    事实型   —— 答案存在于某篇文献中，考"能不能找到并答对"；
+//                       compare 对比型   —— 需要跨文献/跨章节综合，考"MMR 多路召回是否有效"；
+//                       absent  无法回答型 —— 文献里确实没有这个内容，考"会不会硬编答案"。
+//   expected_source   选填。期望命中的**真实文件名**（必须与 papers/ 下的文件名逐字一致，
+//                     含中文括号与连字符）。检索指标 Recall@K 用它判定；
+//                     type=absent 的问题留空，因为正确答案是"不引用任何文献"。
+//   expected_keywords 选填。期望答案中出现的关键词（任一命中即算答对）。
+//                     只放"文献里真实出现过的术语"，否则会把正确回答误判为错误。
+//                     留空表示不检查关键词（如 absent 类问题只看拒答行为）。
+//
+// 填写建议：
+//   1. 一条问题只考一件事。把"用了什么模型、效果如何、代价多大"塞进一个问题，
+//      无法区分到底是检索错了还是回答错了。
+//   2. expected_source 优先写"唯一答案所在的那篇"。多篇都能答的问题（如共同做法）
+//      只写最主要的一篇，避免指标虚高。
+//   3. absent 类问题必须真的"文献里没有"。随手编一个（比如问光伏文献里的电池片工艺）
+//      会让幻觉率变成噪声，反而误导优化方向。本文件的 absent 问题都经过人工确认：
+//      主题落在量子计算、电价政策、硬件成本、风电预测四个明显超出文献范围的领域。
+//   4. 新增问题后请重跑 `python eval/run_eval.py --retrieval-only`，
+//      确认高 K 值下能够命中，否则先怀疑问题本身而不是系统。
+// ============================================================================
+
+// ---------------------------- 一、事实型（7 条） ----------------------------
+{"id": "fact-01", "question": "TCN-BiLSTM-Attention-ESN 模型的创新点是什么？", "type": "fact", "expected_source": "基于TCN-BiLSTM-Attention-ESN的光伏功率预测(1).pdf", "expected_keywords": ["TCN", "BiLSTM", "注意力"]}
+{"id": "fact-02", "question": "改进 Transformer 的短期光伏功率概率预测方法中，概率预测是怎么实现的？", "type": "fact", "expected_source": "基于改进Transformer模型的短期光伏功率概率预测方法研究.pdf", "expected_keywords": ["概率", "Transformer", "分位数"]}
+{"id": "fact-03", "question": "时频域分解-增强-融合 Transformer 方法中，时频域分解用的是什么算法？", "type": "fact", "expected_source": "基于时频域分解-增强-融合Transformer的多因素光伏发电功率预测.pdf", "expected_keywords": ["分解", "小波", "VMD"]}
+{"id": "fact-04", "question": "CEEMDAN-Informer 组合预测模型里，模态分解起了什么作用？", "type": "fact", "expected_source": "基于综合距离相似的CEEMDAN-Informer光伏功率组合预测模型研究.pdf", "expected_keywords": ["CEEMDAN", "模态", "分解"]}
+{"id": "fact-05", "question": "ICEEMDAN-BiGRU-XGBoost-CrossAttention 模型中交叉注意力机制的作用是什么？", "type": "fact", "expected_source": "计及相似日与ECM的ICEEMDAN-BiGRU-XGBoost-CrossAttention超短期光伏功率预测.pdf", "expected_keywords": ["CrossAttention", "交叉注意力", "注意力"]}
+{"id": "fact-06", "question": "MHA-LSTM 模型在提取 NWP 相似日特征时用了哪些气象因素？", "type": "fact", "expected_source": "计及NWP相似日的MHA-LSTM光伏发电超短期功率预测.pdf", "expected_keywords": ["NWP", "相似日", "辐照"]}
+{"id": "fact-07", "question": "这些文献用什么指标评价预测精度？误差评价指标是怎么定义的？", "type": "fact", "expected_source": "基于改进Transformer模型的短期光伏功率概率预测方法研究.pdf", "expected_keywords": ["RMSE", "MAE", "均方根"]}
+
+// ---------------------------- 二、对比型（4 条） ----------------------------
+{"id": "compare-01", "question": "这些文献在数据预处理上有哪些共同做法？", "type": "compare", "expected_source": "基于综合距离相似的CEEMDAN-Informer光伏功率组合预测模型研究.pdf", "expected_keywords": ["归一化", "分解", "异常"]}
+{"id": "compare-02", "question": "对比这些文献使用的深度学习模型，它们在时序特征提取思路上有什么差异？", "type": "compare", "expected_source": "基于TCN-BiLSTM-Attention-ESN的光伏功率预测(1).pdf", "expected_keywords": ["LSTM", "Transformer", "卷积"]}
+{"id": "compare-03", "question": "针对光伏功率的波动性和间歇性，不同文献分别提出了哪些应对策略？", "type": "compare", "expected_source": "基于时频域分解-增强-融合Transformer的多因素光伏发电功率预测.pdf", "expected_keywords": ["波动", "分解", "天气"]}
+{"id": "compare-04", "question": "多篇文献都用到模态分解，它们的分解策略有何异同？", "type": "compare", "expected_source": "计及相似日与ECM的ICEEMDAN-BiGRU-XGBoost-CrossAttention超短期光伏功率预测.pdf", "expected_keywords": ["CEEMDAN", "ICEEMDAN", "模态分解"]}
+
+// ---------------------------- 三、无法回答型（4 条） ----------------------------
+// 这四条的正确答案都是"文献中未提及"。它们度量的是模型会不会硬编答案
+// （即幻觉率 = 1 - 拒答准确率）。
+{"id": "absent-01", "question": "这些论文里有没有讨论量子计算在光伏功率预测中的应用？", "type": "absent", "expected_source": "", "expected_keywords": []}
+{"id": "absent-02", "question": "这些文献有没有分析光伏上网电价政策对预测精度的影响？", "type": "absent", "expected_source": "", "expected_keywords": []}
+{"id": "absent-03", "question": "论文里有没有给出预测模型在具体光伏电站上的硬件部署成本？", "type": "absent", "expected_source": "", "expected_keywords": []}
+{"id": "absent-04", "question": "这些文献是否讨论了风力发电功率预测方法，并迁移到光伏场景？", "type": "absent", "expected_source": "", "expected_keywords": []}
