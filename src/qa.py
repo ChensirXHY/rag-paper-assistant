@@ -18,7 +18,7 @@ from __future__ import annotations
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
@@ -31,6 +31,37 @@ from src.vectorstore import IndexStats, VectorStoreManager
 logger = get_logger(__name__)
 
 _PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "qa_prompt.txt"
+
+
+def base_name(path: str | Path) -> str:
+    r"""取出路径的文件名，**不依赖当前操作系统的路径风格**。
+
+    为什么不用 ``Path(path).name``：``Path`` 会按当前平台的分隔符解析。
+    在 Linux 上 ``Path("E:\\\\papers\\\\论文.pdf").name`` 返回的是整个字符串，
+    因为反斜杠在 POSIX 里不是分隔符。而文献的 ``source`` 元数据来自
+    PDF 加载器，可能记录的是 Windows 风格的路径（例如索引在 Windows 上
+    建立、程序在容器/Linux 上运行），这时 basename 就会失效，
+    界面上会显示一长串完整路径。
+
+    Args:
+        path: 任意平台风格的路径字符串或 Path 对象。
+
+    Returns:
+        文件名部分；无法解析时返回原字符串。
+
+    Example:
+        >>> base_name(r"E:\\papers\\论文.pdf")
+        '论文.pdf'
+        >>> base_name("/home/user/papers/paper.pdf")
+        'paper.pdf'
+    """
+    text = str(path)
+
+    # Windows 风格：带盘符（C:\ 或 C:/）或以反斜杠分隔
+    if "\\" in text or (len(text) > 1 and text[1] == ":"):
+        return PureWindowsPath(text).name
+
+    return PurePosixPath(text).name
 
 
 @dataclass
@@ -303,7 +334,7 @@ def format_context(docs: list[Document]) -> str:
     """
     blocks = []
     for idx, doc in enumerate(docs, 1):
-        source = Path(str(doc.metadata.get("source", "未知"))).name
+        source = base_name(doc.metadata.get("source", "未知"))
         page = doc.metadata.get("page", "?")
         blocks.append(f"[片段{idx}] 出自《{source}》第{page}页\n{doc.page_content}")
     return "\n\n".join(blocks)
@@ -324,7 +355,7 @@ def collect_sources(docs: list[Document]) -> list[Source]:
     seen: set[tuple[str, object]] = set()
     sources: list[Source] = []
     for doc in docs:
-        file_name = Path(str(doc.metadata.get("source", "未知"))).name
+        file_name = base_name(doc.metadata.get("source", "未知"))
         page = doc.metadata.get("page", "?")
         key = (file_name, page)
         if key in seen:

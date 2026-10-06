@@ -346,11 +346,38 @@ def fake_documents():
 
 @pytest.fixture
 def staging_project() -> Path:
-    """返回真实项目副本路径；不存在时跳过测试。
+    """返回"带真实资源"的项目目录；找不到时跳过测试。
 
-    只给集成测试用。这里显式判存在再 skip，是为了让"没准备真实数据"的
-    环境给出清晰的跳过原因，而不是让人对着一堆 FileNotFoundError 排查。
+    按下列顺序探测，第一个命中的即被使用：
+
+        1. 环境变量 ``RAG_TEST_PROJECT`` —— 便于 CI 或他人指向自己的数据目录；
+        2. 当前项目根目录（只要 ``papers/`` 里确实有文献）——
+           这是最常见的情况：开发者就在自己的仓库里跑 ``--run-integration``，
+           没必要再复制一份 1.3 GB 的模型副本；
+        3. 历史遗留的 ``E:\\project\\_staging_test`` 副本（如果存在）。
+
+    显式判存在再 skip，是为了让"没准备真实数据"的环境给出清晰的跳过原因，
+    而不是让人对着一堆 FileNotFoundError 排查。
     """
-    if not STAGING_ROOT.is_dir():
-        pytest.skip(f"未找到真实项目副本：{STAGING_ROOT}")
-    return STAGING_ROOT
+    candidates: list[Path] = []
+
+    env_dir = os.environ.get("RAG_TEST_PROJECT", "").strip()
+    if env_dir:
+        candidates.append(Path(env_dir))
+    candidates.append(PROJECT_ROOT)
+    candidates.append(STAGING_ROOT)
+
+    for candidate in candidates:
+        papers = candidate / "papers"
+        try:
+            has_pdf = papers.is_dir() and any(papers.glob("*.pdf"))
+        except OSError:
+            has_pdf = False
+        if has_pdf:
+            return candidate
+
+    pytest.skip(
+        "未找到含真实文献的项目目录。已尝试："
+        + "、".join(str(c) for c in candidates)
+        + "。请在项目根目录放入 papers/*.pdf，或设置 RAG_TEST_PROJECT 指向数据目录。"
+    )
