@@ -148,7 +148,22 @@ jobs:
       - name: 运行单元测试
         # 不加 --run-integration：集成用例需要真实 PDF 与嵌入模型，
         # 在 CI 里既慢又不稳定（这类测试适合本地或夜间任务跑）
-        run: pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=50
+        # tee：既输出到日志，也留一份文件供失败时上传为 artifact
+        run: |
+          set -o pipefail
+          pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=50 2>&1 | tee pytest-output.txt
+
+      - name: 上传测试输出（无论成功失败，便于远程排查）
+        # 关键设计：GitHub 的日志下载接口对经典 PAT 有限制，contributor
+        # 往往拿不到 Actions 日志。把输出做成 artifact 后，用相同凭据
+        # 即可通过 API 下载，不必让维护者手工复制粘贴日志。
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-output
+          path: pytest-output.txt
+          retention-days: 7
+          if-no-files-found: warn
 
   # --------------------------------------------------------------------------
   # job 3：依赖可安装性检查（只在 main 上跑）

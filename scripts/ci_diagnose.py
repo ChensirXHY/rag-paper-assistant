@@ -14,6 +14,7 @@ import locale
 import os
 import platform
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -100,8 +101,6 @@ print()
 print("=" * 72)
 print("5. pytest 收集（这一步能暴露 collection error）")
 print("=" * 72)
-import subprocess
-
 result = subprocess.run(
     [sys.executable, "-m", "pytest", "tests/", "--collect-only", "-q", "--no-header"],
     cwd=PROJECT_ROOT,
