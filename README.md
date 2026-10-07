@@ -8,7 +8,6 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ![演示](docs/demo.gif)
-<!-- ⭐ 待补：用 ScreenToGif 录 20 秒的问答过程，放到 docs/demo.gif（压到 3 MB 内） -->
 
 ---
 
